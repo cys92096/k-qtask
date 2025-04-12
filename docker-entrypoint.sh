@@ -1,51 +1,51 @@
 #!/bin/bash
 
-# 日志函数
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-}
+dir_shell=/ql/shell
+. $dir_shell/share.sh
+. $dir_shell/env.sh
 
-# 设置环境变量
-DIR=/ql
-DIR_LOG=/ql/log
+echo -e "======================1. 检测配置文件========================\n"
+import_config "$@"
+make_dir /etc/nginx/conf.d
+make_dir /run/nginx
+init_nginx
+fix_config
 
-# 创建日志目录
-mkdir -p "$DIR_LOG"
+pm2 l &>/dev/null
 
-# 0. 验证持久化存储
-log "======================0. 验证持久化存储========================"
-if ! touch /ql/data/test_write || ! rm /ql/data/test_write; then
-    log "错误：/ql/data 不可写，请检查是否正确挂载持久化存储"
-    exit 1
+echo -e "======================2. 安装依赖========================\n"
+patch_version
+
+echo -e "======================3. 启动nginx========================\n"
+nginx -s reload 2>/dev/null || nginx -c /etc/nginx/nginx.conf
+echo -e "nginx启动成功...\n"
+
+echo -e "======================4. 启动pm2服务========================\n"
+reload_update
+reload_pm2
+
+if [[ $AutoStartBot == true ]]; then
+  echo -e "======================5. 启动bot========================\n"
+  nohup ql bot >$dir_log/bot.log 2>&1 &
+  echo -e "bot后台启动中...\n"
 fi
-log "持久化存储验证通过"
 
-# 1. 初始化数据库
-log "======================1. 初始化数据库========================"
-if [ -f /ql/data/db/database.sqlite ]; then
-    sqlite3 /ql/data/db/database.sqlite "PRAGMA integrity_check;" || {
-        log "错误：数据库文件已损坏，将尝试备份并创建新数据库"
-        cp /ql/data/db/database.sqlite /ql/data/db/database.sqlite.corrupted
-        rm /ql/data/db/database.sqlite
-    }
+if [[ $EnableExtraShell == true ]]; then
+  echo -e "====================6. 执行自定义脚本========================\n"
+  nohup ql extra >$dir_log/extra.log 2>&1 &
+  echo -e "自定义脚本后台执行中...\n"
 fi
-sqlite3 /ql/data/db/database.sqlite "PRAGMA journal_mode=WAL;"
-log "数据库初始化完成，WAL 模式已启用"
 
-# 2. 启动青龙服务（假设使用 pm2 管理）
-log "======================2. 启动青龙服务========================"
-pm2 start /ql/scripts/app.js --name qinglong || {
-    log "错误：青龙服务启动失败"
-    exit 1
-}
-log "青龙服务已启动"
+echo -e "======================7. 启动数据同步服务========================\n"
+/sync_data.sh &
 
-# 3. 延迟启动数据同步服务
-log "======================3. 启动数据同步服务========================"
-sleep 10  # 等待青龙服务稳定
-nohup /sync_data.sh >"$DIR_LOG/sync.log" 2>&1 &
-log "数据同步服务已启动，日志输出至 $DIR_LOG/sync.log"
+echo -e "############################################################\n"
+echo -e "容器启动成功..."
+echo -e "############################################################\n"
 
-# 保持容器运行
-log "容器启动完成，进入等待状态..."
-pm2 logs
+echo -e "##########写入登陆信息############"
+echo "{ \"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\" }" > /ql/data/config/auth.json
+
+tail -f /dev/null
+
+exec "$@"
