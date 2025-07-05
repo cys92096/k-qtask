@@ -25,7 +25,7 @@ if [[ $AutoStartBot == true ]]; then
 fi
 
 if [[ $EnableExtraShell == true ]]; then
-  echo -e "======================5. 执行自定义脚本========================\n"
+  echo -e "====================5. 执行自定义脚本========================\n"
   nohup ql extra >$dir_log/extra.log 2>&1 &
   echo -e "自定义脚本后台执行中...\n"
 fi
@@ -33,13 +33,8 @@ fi
 echo -e "======================6. 启动数据同步服务========================\n"
 /sync_data.sh &
 
-echo -e "############################################################\n"
-echo -e "容器启动成功..."
-echo -e "############################################################\n"
-
-echo -e "##########写入登陆信息############"
+echo -e "########## 写入登录信息 ##########"
 echo "{ \"username\": \"$ADMIN_USERNAME\", \"password\": \"$ADMIN_PASSWORD\" }" > /ql/data/config/auth.json
 
+# 保持容器运行（可替换为 exec ql bot 作为主进程）
 tail -f /dev/null
-
-exec "$@"
